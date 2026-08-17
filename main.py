@@ -42,7 +42,7 @@ system_prompt = """
 
 لحن تو باید محترمانه، دوستانه و بسیار کارآمد باشد. هر بار که تغییری در برنامه کلاسی می‌دهی، تایید کن و وضعیت جدید را گزارش بده.
 """
-model = genai.GenerativeModel(model_name='gemini-1.5-flash', system_instruction=system_prompt)
+model = genai.GenerativeModel(model_name='gemini-pro', system_instruction=system_prompt)
 user_chats = {}
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
