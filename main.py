@@ -14,7 +14,7 @@ if not TELEGRAM_TOKEN or not GEMINI_API_KEY:
     exit(1)
 
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel(model_name='gemini-1.5-flash')
+model = genai.GenerativeModel(model_name='gemini-3.5-flash')
 
 # حافظه‌ی هر کاربر (chat history) در حافظه‌ی موقت برنامه نگهداری می‌شود
 user_chats = {}
