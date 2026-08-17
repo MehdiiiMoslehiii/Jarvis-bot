@@ -1,76 +1,74 @@
 import os
-import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
 import google.generativeai as genai
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# ==========================================
-# ترفند گول زدن رندر (ساخت یک وب‌سرور فیک)
-# ==========================================
-class DummyHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header('Content-type','text/plain')
-        self.end_headers()
-        self.wfile.write(b"Jarvis is alive!")
-
-def run_dummy_server():
-    # رندر یک پورت به ما می‌ده، اگر نداد از 10000 استفاده می‌کنیم
-    port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(('0.0.0.0', port), DummyHandler)
-    server.serve_forever()
-
-# وب‌سرور فیک رو تو یک نخ (Thread) جداگانه روشن می‌کنیم
-threading.Thread(target=run_dummy_server, daemon=True).start()
-
-# ==========================================
-# کدهای اصلی ربات جارویس
-# ==========================================
+# دریافت اطلاعات از سرور رندر
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL")
+PORT = int(os.environ.get("PORT", 10000))
 
+# تنظیمات اتصال به مغز جمینای (سازگار با تمامی نسخه‌ها)
 genai.configure(api_key=GEMINI_API_KEY)
-system_prompt = """
-تو «جارویس» هستی؛ یک دستیار هوشمند، حرفه‌ای و همه‌کاره برای یک مدرس زبان انگلیسی و آلمانی.
-وظایف اصلی تو عبارتند از:
-۱. مدیریت برنامه‌های کلاسی: باید کلاس‌های زبان‌آموزان (نام، روز، ساعت، و زبان مربوطه) را به خاطر بسپاری. اگر من گفتم کلاسی را اضافه، حذف یا جابجا کن، آن را در حافظه‌ات ویرایش کن و برنامه جدیدِ هفته را به صورت یک لیست مرتب به من نشان بده.
-۲. سازمان‌دهی کارها: کمک به مدیریت کارهای روزانه و زمان‌بندی شخصی من.
-۳. تولید محتوای آموزشی: نوشتن متن‌های آموزشی، تمرین‌های گرامری، داستان‌های کوتاه، کوئیزها و متریال‌های آموزشی برای زبان‌های انگلیسی و آلمانی (از سطح A1 تا C2) با بالاترین کیفیت.
-۴. ایده‌پردازی: پیشنهاد روش‌های تدریس خلاقانه، بازی‌های کلاسی و موضوعات جذاب برای بحث آزاد.
-۵. تصحیح و ترجمه: کمک به بررسی، اصلاح و ترجمه متن‌ها.
-
-لحن تو باید محترمانه، دوستانه و بسیار کارآمد باشد. هر بار که تغییری در برنامه کلاسی می‌دهی، تایید کن و وضعیت جدید را گزارش بده.
-"""
-model = genai.GenerativeModel(model_name='gemini-pro', system_instruction=system_prompt)
+model = genai.GenerativeModel(model_name='gemini-pro')
 user_chats = {}
+
+# دستورالعمل‌های جارویس
+system_prompt = """
+تو «جارویس» هستی؛ دستیار هوشمند و همه‌کاره یک مدرس زبان انگلیسی و آلمانی.
+وظایف اصلی تو:
+۱. مدیریت برنامه‌های کلاسی (حفظ کردن، اضافه، حذف و جابجایی زمان‌ها)
+۲. سازمان‌دهی کارهای روزانه
+۳. تولید محتوای آموزشی (انگلیسی و آلمانی از سطح A1 تا C2)
+۴. ایده‌پردازی، طراحی کوئیز و تصحیح متن‌ها
+لطفاً لحنت محترمانه و دوستانه باشد و هر تغییری در برنامه‌ها دادی، برنامه جدید را نشان بده.
+"""
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    user_chats[user_id] = model.start_chat(history=[])
-    welcome_text = (
-        "سلام! من جارویس هستم، دستیار شخصی و آموزشی شما. 🤖\n\n"
-        "شما می‌تونید برنامه کلاس‌هاتون رو به من بگید تا مدیریت کنم، "
-        "یا برای تولید محتوا، طراحی تمرین و ایده‌پردازی زبان انگلیسی و آلمانی از من کمک بگیرید."
-    )
-    await update.message.reply_text(welcome_text)
+    # اعمال شخصیت جارویس به صورت مستقیم در حافظه (بدون ارور)
+    user_chats[user_id] = model.start_chat(history=[
+        {"role": "user", "parts": [system_prompt]},
+        {"role": "model", "parts": ["متوجه شدم. من جارویس هستم و آماده‌ام طبق دستورات شما برنامه‌ها و محتوا را مدیریت کنم."]}
+    ])
+    
+    await update.message.reply_text("سلام! من جارویس هستم، دستیار شخصی و آموزشی شما. 🤖\nبرنامه‌هاتون رو به من بگید.")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_text = update.message.text
+    
     if user_id not in user_chats:
-        user_chats[user_id] = model.start_chat(history=[])
+        user_chats[user_id] = model.start_chat(history=[
+            {"role": "user", "parts": [system_prompt]},
+            {"role": "model", "parts": ["آماده دریافت دستورات هستم."]}
+        ])
+        
     chat_session = user_chats[user_id]
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action='typing')
+    
     try:
         response = chat_session.send_message(user_text)
         await update.message.reply_text(response.text)
     except Exception as e:
-        await update.message.reply_text(f"خطایی رخ داد. جزئیات خطا: {e}")
+        await update.message.reply_text(f"یک لحظه دچار مشکل شدم. جزئیات: {e}")
 
 if __name__ == '__main__':
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.run_polling(drop_pending_updates=True)
-
+    
+    # -----------------------------------------------------------------
+    # راه حل قطعی و نهایی: استفاده از Webhook به جای Polling
+    # با این کار ارور Conflict کلا غیرممکن می‌شود!
+    # -----------------------------------------------------------------
+    if RENDER_EXTERNAL_URL:
+        app.run_webhook(
+            listen="0.0.0.0",
+            port=PORT,
+            url_path=TELEGRAM_TOKEN,
+            webhook_url=f"{RENDER_EXTERNAL_URL}/{TELEGRAM_TOKEN}"
+        )
+    else:
+        app.run_polling(drop_pending_updates=True)
