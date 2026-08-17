@@ -1,39 +1,38 @@
 import os
+import asyncio
 import google.generativeai as genai
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# دریافت اطلاعات از سرور رندر
+# گرفتن کلیدها
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL")
-PORT = int(os.environ.get("PORT", 10000))
 
-# تنظیمات اتصال به مغز جمینای (سازگار با تمامی نسخه‌ها)
+if not TELEGRAM_TOKEN or not GEMINI_API_KEY:
+    print("خطا: کلیدهای تلگرام یا جمینای پیدا نشد! لطفا در تنظیمات Render آنها را وارد کنید.")
+    exit(1)
+
+# تنظیمات جمینای
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel(model_name='gemini-pro')
+# استفاده از gemini-1.5-flash که سریع‌ترین مدل برای چت‌بات‌ها است
+model = genai.GenerativeModel(model_name='gemini-1.5-flash')
 user_chats = {}
 
-# دستورالعمل‌های جارویس
 system_prompt = """
-تو «جارویس» هستی؛ دستیار هوشمند و همه‌کاره یک مدرس زبان انگلیسی و آلمانی.
+تو «جارویس» هستی؛ یک دستیار هوشمند، حرفه‌ای و همه‌کاره برای یک مدرس زبان انگلیسی و آلمانی.
 وظایف اصلی تو:
-۱. مدیریت برنامه‌های کلاسی (حفظ کردن، اضافه، حذف و جابجایی زمان‌ها)
-۲. سازمان‌دهی کارهای روزانه
-۳. تولید محتوای آموزشی (انگلیسی و آلمانی از سطح A1 تا C2)
-۴. ایده‌پردازی، طراحی کوئیز و تصحیح متن‌ها
-لطفاً لحنت محترمانه و دوستانه باشد و هر تغییری در برنامه‌ها دادی، برنامه جدید را نشان بده.
+۱. مدیریت برنامه‌های کلاسی: باید کلاس‌های زبان‌آموزان (نام، روز، ساعت، و زبان مربوطه) را به خاطر بسپاری.
+۲. تولید محتوای آموزشی: نوشتن تمرین‌های گرامری، داستان‌های کوتاه، و متریال‌های آموزشی برای انگلیسی و آلمانی (A1 تا C2).
+۳. ایده‌پردازی: پیشنهاد روش‌های تدریس خلاقانه.
 """
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    # اعمال شخصیت جارویس به صورت مستقیم در حافظه (بدون ارور)
     user_chats[user_id] = model.start_chat(history=[
         {"role": "user", "parts": [system_prompt]},
-        {"role": "model", "parts": ["متوجه شدم. من جارویس هستم و آماده‌ام طبق دستورات شما برنامه‌ها و محتوا را مدیریت کنم."]}
+        {"role": "model", "parts": ["متوجه شدم. من جارویس هستم. منتظر دستورات کلاسی و آموزشی شما هستم."]}
     ])
-    
-    await update.message.reply_text("سلام! من جارویس هستم، دستیار شخصی و آموزشی شما. 🤖\nبرنامه‌هاتون رو به من بگید.")
+    await update.message.reply_text("سلام! من جارویس هستم. چه کلاسی رو می‌خوای اضافه کنی؟")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -42,7 +41,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id not in user_chats:
         user_chats[user_id] = model.start_chat(history=[
             {"role": "user", "parts": [system_prompt]},
-            {"role": "model", "parts": ["آماده دریافت دستورات هستم."]}
+            {"role": "model", "parts": ["متوجه شدم. آماده کارم."]}
         ])
         
     chat_session = user_chats[user_id]
@@ -52,23 +51,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         response = chat_session.send_message(user_text)
         await update.message.reply_text(response.text)
     except Exception as e:
-        await update.message.reply_text(f"یک لحظه دچار مشکل شدم. جزئیات: {e}")
+        await update.message.reply_text("ارتباط با مغز جمینای قطع شد. لطفاً دوباره تلاش کن.")
+        print(f"Error: {e}")
 
+# اجرای ساده و بدون دردسر با drop_pending_updates
 if __name__ == '__main__':
+    # این دستور تضمین می‌کند که کدهای قبلی در تلگرام گیر نکنند
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    # -----------------------------------------------------------------
-    # راه حل قطعی و نهایی: استفاده از Webhook به جای Polling
-    # با این کار ارور Conflict کلا غیرممکن می‌شود!
-    # -----------------------------------------------------------------
-    if RENDER_EXTERNAL_URL:
-        app.run_webhook(
-            listen="0.0.0.0",
-            port=PORT,
-            url_path=TELEGRAM_TOKEN,
-            webhook_url=f"{RENDER_EXTERNAL_URL}/{TELEGRAM_TOKEN}"
-        )
-    else:
-        app.run_polling(drop_pending_updates=True)
+    print("شروع اجرای جارویس...")
+    # استفاده از حلقه ساده‌تر برای جلوگیری از ارور Conflict
+    app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
